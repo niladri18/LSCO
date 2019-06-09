@@ -568,9 +568,9 @@ double FindFermi(Cell *data, Quad *quadrature, int lines, double U, double J){
 	//double pop;
 	for (int i = 0; i < Nbin; i++){
 		occupancy += dos(i);
-		//idx = i;
-		if(occupancy > rho*Nk*NU) break;
 		idx = i;
+		if(occupancy > rho*Nk*NU) break;
+		//idx = i;
 		//pop = occupancy;
 		//occupancy += dos(i);
 		//idx = i;
@@ -625,15 +625,15 @@ double HartreeFock(Cell *data, Quad *quadrature, int lines, double U, double J){
 			for (int i = 0; i < NU; i++) Eigval(kx,ky,i) = eval(i)-Efermi;
 			//eval.print();
 			for (int i = 0; i < NU; i++){
-				//ifermi = i;
+				ifermi = i;
 				//energy += eval(i)*weight;
 				if(eval(i)>Efermi) break;
-				ifermi = i;
+				//ifermi = i;
 				energy += eval(i)*weight;
 			}
 			//for (int i = 0; i < NU; i++) Eigval(kx,ky,i) = eval(i);
 			//psi.zeros(ifermi,NU);	
-			//psi.zeros(NU,ifermi);	
+			psi.zeros(NU,ifermi);	
 			//cout<<"idx"<<endl;
 			//ifermi = 10;
 			//cout<<ifermi<<endl;
@@ -1110,6 +1110,7 @@ void saveBandGap(Quad *quadrature, double U, double Hz){
 			//for(int i = 0; i < NU; i++)fprintf(fband,"%f\t", Eigval(kx,ky,i)  );
 			fprintf(fband,"%f \t",  Eigval(kx,ky,NU-1)-Eigval(kx,ky,NU-3)  );// spin up
 			fprintf(fband,"%f \t",  Eigval(kx,ky,NU-2)-Eigval(kx,ky,NU-4)  );// spin down
+			fprintf(fband,"%f \t",  Eigval(kx,ky,NU-1)-Eigval(kx,ky,NU-2)  );// spin up - spin down
 			//fprintf(fband,"%f \t %f\t %f", Eigval(kx,ky,NU-2), Eigval(kx,ky,NU-1), Eigval(kx,ky,NU-1)-Eigval(kx,ky,NU-2)  );
 			//printf("\n");
 			fprintf(fband,"\n");
@@ -1159,9 +1160,12 @@ void saveArpes(Cell *data, Quad *quadrature, int lines, double U, double J, doub
 		//for (int mu = 0; mu < NU; mu++) printf("%lf\t",eval(mu)-Efermi);
 		//fprintf(fband,"%f \t %f\t %f", eval(NU-2), eval(NU-1), eval(NU-1)-eval(NU-2)  );
 		//printf("%f \t %f\t %f", eval(NU-2), eval(NU-1), eval(NU-1)-eval(NU-2)  );
-		sprintf(buffer,"%f \t %f\t ", eval(NU-1) - eval(NU-3), eval(NU-2) - eval(NU-4)  );
+		//sprintf(buffer,"%f \t %f\t ", eval(NU-1) - eval(NU-3), eval(NU-2) - eval(NU-4)  );
+		for (int mu = 0; mu < NU; mu++) sprintf(buffer,"%lf\t",eval(mu)-Efermi);
+		for (int mu = 0; mu < NU; mu++) fo <<(eval(mu)-Efermi)<<"\t";
+		
 		//fo << eval(NU-2)<<"\t"<< eval(NU-1)<<"\t"<< eval(NU-1)-eval(NU-2)  <<endl;
-		fo << buffer << endl;
+		fo << "" << endl;
 		//printf("\n");
 		//for (int mu = 0; mu < NU; mu++) fprintf(fband,"%lf\t",eval(mu)-Efermi);
 	}
