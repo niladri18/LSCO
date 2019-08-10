@@ -1,3 +1,6 @@
+#define ARMA_DONT_USE_WRAPPER
+#define ARMA_USE_LAPACK
+#define ARMA_USE_BLAS
 #include <iostream>
 #include <fstream>
 #include <stdio.h>
@@ -7,9 +10,6 @@
 #include "lattice.h"
 #include "matrix.h"
 #include "gauleg_double.cpp"
-//#define ARMA_DONT_USE_WRAPPER
-//#define ARMA_USE_LAPACK
-//#define ARMA_USE_BLAS
 #include <armadillo>
 //#include </opt/armadillo/9.200.7/gcc-4.8.5/include/armadillo>
 using namespace std;
@@ -97,6 +97,14 @@ int delta(double m1, double m2){
 	return x;
 }
 
+double findmax(double a, double b){
+	if (a > b){
+		return a;
+	}
+	else{
+		return b;
+	}
+}
 
 int main(int argc, char *argv[]){
 	
@@ -152,6 +160,7 @@ int main(int argc, char *argv[]){
 	//DENSITY_MATRIX.randu(NU,NU);
 	//DENSITY_MATRIX.zeros(NU,NU);
 	DENSITY_MATRIX.eye(NU,NU);
+	DENSITY_MATRIX_tmp.eye(NU,NU);
 	Eigval.zeros(Nintx, Ninty, NU);
 	//DENSITY_MATRIX_tmp.randu(NU,NU);
 	//DENSITY_MATRIX.print("Density Matrix");
@@ -172,10 +181,10 @@ int main(int argc, char *argv[]){
 	for (int i = 0; i < 1000; i++){
 		Etot = HartreeFock(data, &quadrature, lines, U, J);
 		ComputeMagMoment(moment);
-		error = maxDiff(moment, oldmoment);
+		//error = maxDiff(moment, oldmoment);
 		iter = i;
 		//oldmoment = moment;
-		//error = errorDensityMatrix();
+		error = errorDensityMatrix();
 		printf("Energy = %lf  at step %d Error: %f\n",Etot, i, error);
 		if(error < 10e-10) break;
 		oldmoment = moment;
@@ -433,7 +442,7 @@ int initHop(double ts, double tp){
                 Hyy[i][j] = tmpxy[i%NC][j];
         }
 	for (int i = NC; i < NU; i++) for (int j = NC; j < NU; j++){
-		Hyy[i][j] = tmpyy[i][j%NC];
+		Hyy[i][j] = tmpyy[i%NC][j%NC];
 	}
 
 	/* Define x-y unit cell hopping */
@@ -450,7 +459,14 @@ int initHop(double ts, double tp){
 
 
 int initQuadrature(Quad *quadrature){
-        
+       
+	/* Generate Gaussian-Legendre quadrature to integrate over the discretized k-space 
+	 *
+	 * position: stores Nint(x/y) points between [-PI,PI ]
+	 *
+	 * weight: stores corresponding Gaussian-Legendre weight
+	 *
+	 * */
 	int Dim = 2;
         quadrature->Nint[0] = Nintx;
         quadrature->Nint[1] = Ninty;
@@ -470,7 +486,7 @@ int initQuadrature(Quad *quadrature){
 int compute_hopmatrix(cx_mat& hopmatrix, double kx, double ky, Cell *data, int lines){
         
 	
-        /* Computes the fourier transform of the Hopping matrix */
+        /* Computes the fourier transform of the Hopping matrix H_0(k) */
 	
 	cx_double ex;	
 	hopmatrix.zeros();
@@ -602,6 +618,7 @@ double HartreeFock(Cell *data, Quad *quadrature, int lines, double U, double J){
 	double weight, energy = 0;
 	int hermitian, ifermi;
 	double Efermi;
+	//double deltaMu;
 	DecoupleHF(H_U, U, J);
         Efermi = FindFermi(data, quadrature, lines, U, J);
 	//DecoupleHF(H_U, U, J);
@@ -612,7 +629,7 @@ double HartreeFock(Cell *data, Quad *quadrature, int lines, double U, double J){
 	my_rho.zeros(NU,NU);
 	for (int kx = 0; kx < Nintx; kx++) {
 		for (int ky = 0; ky < Ninty; ky++){
-			weight = quadrature->weight[0][kx] * quadrature->weight[1][ky] /Factor;
+			weight = quadrature->weight[0][kx] * quadrature->weight[1][ky]/Factor ;
 			hermitian = compute_hopmatrix(hamil,quadrature->position[0][kx], quadrature->position[1][ky],data,lines);
 			if (hermitian != 1) {
 				cout<<"hopmatrix is non-hermitian!"<<endl;
@@ -633,8 +650,10 @@ double HartreeFock(Cell *data, Quad *quadrature, int lines, double U, double J){
 			}
 			//for (int i = 0; i < NU; i++) Eigval(kx,ky,i) = eval(i);
 			//psi.zeros(ifermi,NU);	
-			psi.zeros(NU,ifermi);	
+			//psi.zeros(NU,ifermi-1);	
 			//cout<<"idx"<<endl;
+			//deltaMu = 10 - ifermi + 1;
+			//cout<<"delta:"<<deltaMu<<endl;
 			//ifermi = 10;
 			//cout<<ifermi<<endl;
 			// compute density matrix
@@ -798,11 +817,23 @@ int DecoupleHF( cx_mat& H_U, double U, double J){
 }	
 
 double errorDensityMatrix(){
+
+	/* Computes the maximum error from density matrix between two consecutive iterations */
 	cx_mat tmp(NU,NU);
-	tmp = DENSITY_MATRIX - DENSITY_MATRIX_tmp;
-	//cx_double p = sum(sum(tmp.t()*tmp));
-	//double error = sqrt(real(p)/(NU*NU));
-	double error = real(trace(tmp));
+	mat rtmp(NU,NU), ctmp;
+	//tmp = (DENSITY_MATRIX - DENSITY_MATRIX_tmp).t()*(DENSITY_MATRIX - DENSITY_MATRIX_tmp  );
+	tmp = (DENSITY_MATRIX - DENSITY_MATRIX_tmp);
+	rtmp = real(tmp);
+	ctmp = imag(tmp);
+
+	//rtmp.print("rtmp");
+	//ctmp.print("ctmp");
+
+	double e1, e2;
+	e1 = max(max(rtmp));
+	e2 = max(max(ctmp));
+	//double error = findmax(max(max(rtmp)),max(max(ctmp))) ;
+	double error = findmax(e1,e2) ;
 	DENSITY_MATRIX_tmp = DENSITY_MATRIX;
 	return error;
 }
@@ -958,7 +989,12 @@ void saveMoment(mat& moment, vec& charge, double U, double Hz){
 
 }
 double saveBand(Cell *data, Quad *quadrature, int lines, double U, double J, double Hz){
-	/* Save band structure along high symmetry lines */
+	/* Save band structure along high symmetry lines 
+	 *
+	 *
+	 * NOTE: High symmetry points in the HIYM file below is given in cartesian coordinates
+	 *
+	 * */
 	int Naxis, Dim = 2;
 	mat sympoint;
 	char *indices = NULL;
@@ -1135,9 +1171,9 @@ void saveArpes(Cell *data, Quad *quadrature, int lines, double U, double J, doub
 	double kx,ky, theta, frac = 0.8;
 	char paraband[1024], buffer[1024];
 	sprintf(paraband,"arpes_H%.2f_%d%d%d_U%.2lf.txt",Hz,int(Haxis[0]),int(Haxis[1]),int(Haxis[2]), U);
-	//ifstream fb("inputs/ARPES");
+	ifstream fb("inputs/ARPES");
 	//ifstream fb("inputs/contourE1.txt");
-	ifstream fb("inputs/contourEup1U0.00.txt");
+	//ifstream fb("inputs/contourEup1U0.00.txt");
 	ofstream fo(paraband);
 	while (fb >> kx >> ky){
 		//cout<<kx<<"\t"<<ky<<endl;
@@ -1161,7 +1197,7 @@ void saveArpes(Cell *data, Quad *quadrature, int lines, double U, double J, doub
 		//fprintf(fband,"%f \t %f\t %f", eval(NU-2), eval(NU-1), eval(NU-1)-eval(NU-2)  );
 		//printf("%f \t %f\t %f", eval(NU-2), eval(NU-1), eval(NU-1)-eval(NU-2)  );
 		//sprintf(buffer,"%f \t %f\t ", eval(NU-1) - eval(NU-3), eval(NU-2) - eval(NU-4)  );
-		for (int mu = 0; mu < NU; mu++) sprintf(buffer,"%lf\t",eval(mu)-Efermi);
+		//for (int mu = 0; mu < NU; mu++) sprintf(buffer,"%lf\t",eval(mu)-Efermi);
 		for (int mu = 0; mu < NU; mu++) fo <<(eval(mu)-Efermi)<<"\t";
 		
 		//fo << eval(NU-2)<<"\t"<< eval(NU-1)<<"\t"<< eval(NU-1)-eval(NU-2)  <<endl;

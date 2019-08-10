@@ -1,5 +1,5 @@
 #include "matrix.h"
-
+#include <cstdlib>
 
 float **mkmatrixf(int row, int col){
 	int i;
