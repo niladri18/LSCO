@@ -1,11 +1,12 @@
 #include <complex>
 #include <cmath>
 #include <math.h>
+#include <omp.h>
 
 #define NU      12 
-#define NC      6 // NU/2
-#define Nintx	512
-#define Ninty	512
+#define NC      6 
+#define Nintx	128
+#define Ninty	128
 #define PI      3.14159265358979323846264338
 #define Factor	(4*PI*PI)
 

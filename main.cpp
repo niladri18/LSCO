@@ -11,6 +11,8 @@
 #include "matrix.h"
 #include "gauleg_double.cpp"
 #include <armadillo>
+#include <time.h>
+#include <omp.h>
 //#include </opt/armadillo/9.200.7/gcc-4.8.5/include/armadillo>
 using namespace std;
 using namespace arma;
@@ -43,6 +45,8 @@ using namespace arma;
 
 	*/
 
+
+int flag_omp = 1;
 /* Define parameters */
 double Haxis[3] = {0,0,1}; //Direction of the magnetic field
 
@@ -65,6 +69,7 @@ int initLattice();
 int initQuadrature(Quad *quadrature);
 int compute_hopmatrix(cx_mat& hopmatrix, double kx, double ky,  Cell *data, int lines);
 double HartreeFock(Cell *data, Quad *quadrature, int lines, double U, double J);
+double HartreeFockParallel(Cell *data, Quad *quadrature, int lines, double U, double J);
 double FindFermi(Cell *data, Quad *quadrature, int lines);
 int DecoupleHF( cx_mat& H_U, double U, double J);
 double errorDensityMatrix();
@@ -108,13 +113,19 @@ double findmax(double a, double b){
 
 int main(int argc, char *argv[]){
 	
+	time_t start_t, end_t;
+	start_t = time(NULL);
+	//int omp_num = omp_get_max_threads();
+	//int omp_num = omp_set_max_threads();
+	//printf("Number of threads: %d\n",omp_num);
+	//exit(1);
 	double ts = 1.0, tp = 0.2, U, J, Hz;
 	if (argc !=3){
 		printf("USAGE: %s <U> <Hz> \n",argv[0]);
 		exit(1);
 	}
 	U = atof(argv[1]);
-	J = 0.25*U;
+	J = 0.0*U;
 	Hz = atof(argv[2]);
 	//J = 0;
 	Hintra = mkmatrixd(NU,NU);
@@ -179,7 +190,13 @@ int main(int argc, char *argv[]){
 	double Etot, error;
 	int iter;
 	for (int i = 0; i < 1000; i++){
-		Etot = HartreeFock(data, &quadrature, lines, U, J);
+		if (flag_omp){
+			printf("Using parallel thread\n");
+			Etot = HartreeFockParallel(data, &quadrature, lines, U, J);
+		}
+		else{
+			Etot = HartreeFock(data, &quadrature, lines, U, J);
+		}
 		ComputeMagMoment(moment);
 		//error = maxDiff(moment, oldmoment);
 		iter = i;
@@ -209,6 +226,8 @@ int main(int argc, char *argv[]){
 	saveFullBand(&quadrature, U, Hz);
 	saveBandGap (&quadrature, U, Hz);
 
+	end_t = time(NULL);
+	printf("Finished in %lds.\n",end_t-start_t);
 	//cx_mat hopmatrix(NU,NU);
 	//hopmatrix.zeros();
 	//for (int i = 0; i < NU; i++) for (int j = 0; j < NU; j++) hopmatrix(i,j) = {0.0,-0.5};
@@ -611,7 +630,10 @@ double FindFermi(Cell *data, Quad *quadrature, int lines, double U, double J){
 	//dos.print();
 	return Efermi;
 }
+
 double HartreeFock(Cell *data, Quad *quadrature, int lines, double U, double J){
+
+
 	cx_mat hamil(NU,NU), H_U(NU,NU);
 	vec eval(NU);
 	cx_mat evec(NU,NU),my_rho, psi;
@@ -644,7 +666,7 @@ double HartreeFock(Cell *data, Quad *quadrature, int lines, double U, double J){
 			for (int i = 0; i < NU; i++){
 				ifermi = i;
 				//energy += eval(i)*weight;
-				if(eval(i)>Efermi) break;
+				if(eval(i)>=Efermi) break;
 				//ifermi = i;
 				energy += eval(i)*weight;
 			}
@@ -664,6 +686,7 @@ double HartreeFock(Cell *data, Quad *quadrature, int lines, double U, double J){
 			//cout<<size(psi)<<"\t"<<ifermi<<endl;
 			
 			//my_rho += psi.t()*psi*weight;
+			//my_rho += psi*conj(psi.t())*weight;
 			my_rho += psi*psi.t()*weight;
 			
 			//cout<<size(my_rho)<<"\t"<<ifermi<<endl;
@@ -678,6 +701,111 @@ double HartreeFock(Cell *data, Quad *quadrature, int lines, double U, double J){
 	printf("Trace: %f\n",real(trace(DENSITY_MATRIX)));
 	
 	return energy;
+}
+
+
+double HartreeFockParallel(Cell *data, Quad *quadrature, int lines, double U, double J){
+
+	/* Declare OMP variable */
+	int omp_num = omp_get_max_threads();
+	//omp_set_num_threads(1);
+	//int omp_num = omp_get_num_threads();
+	printf("Number of threads: %d\n",omp_num);
+
+	//exit(1);
+	//cx_mat hamil(NU,NU), H_U(NU,NU);
+	cx_mat total_rho;
+	total_rho.zeros(NU,NU);
+	///cx_cube hamil(NU,NU,omp_num);
+	//vec eval(NU);
+	//mat eval(omp_num, NU);
+	//cx_mat evec(NU,NU),my_rho, psi;
+	double Efermi, energy;
+	//double deltaMu;
+	DecoupleHF(H_U, U, J);
+        Efermi = FindFermi(data, quadrature, lines, U, J);
+	printf("Fermi Energy: %f\n",Efermi);
+	//total_rho.print("rho");
+	//DecoupleHF(H_U, U, J);
+	//H_U.print("HU");
+	//cout<<"Fermi Energy"<<endl;
+	//cout<<Efermi<<endl;
+	//
+	//
+//#pragma omp parallel default(none) shared ( H_U, H_mag, Efermi, quadrature, data, lines, Eigval, DENSITY_MATRIX, energy, total_rho, hamil)
+#pragma omp parallel default(none) shared ( H_U, H_mag, Efermi, quadrature, data, lines, Eigval, DENSITY_MATRIX, energy, total_rho)
+	{
+		//int mythread = omp_get_thread_num();
+		cx_mat my_rho, psi, evec(NU,NU);
+		cx_mat hamil(NU,NU);
+		vec eval(NU);
+		double weight, my_energy = 0;
+		int hermitian, ifermi;
+		my_rho.zeros(NU,NU);
+#pragma omp for collapse(2)
+//#pragma omp for
+		for (int kx = 0; kx < Nintx; kx++) for (int ky = 0; ky < Nintx; ky++){
+		//for (int kx = 0; kx < Nintx; kx++) for (int ky = 0; ky < Nintx; ky++)printf("%d,%d, thread: %d\n",kx,ky,mythread);
+			//printf("%d,%d, thread: %d\n",kx,ky,mythread);
+			//hamil.zeros(NU,NU);
+			weight = quadrature->weight[0][kx] * quadrature->weight[1][ky]/Factor ;
+			//weight = quadrature->weight[0][kx] * quadrature->weight[1][ky];
+			//hamil.slice(mythread).zeros();
+			//hermitian = compute_hopmatrix(hamil.slice(mythread),quadrature->position[0][kx], quadrature->position[1][ky],data,lines);
+			hermitian = compute_hopmatrix(hamil,quadrature->position[0][kx], quadrature->position[1][ky],data,lines);
+			//hermitian = compute_hopmatrix(hamil,quadrature->position[0][kx], quadrature->position[1][ky],data,lines);
+			if (hermitian != 1) {
+				//cout<<"hopmatrix is non-hermitian!"<<endl;
+				printf("hopmatrix is non-hermitian! \n");
+				exit(1);
+			}
+
+			//hamil.slice(mythread) += H_U;
+			//hamil.slice(mythread) += H_mag;
+			hamil += H_U;
+			hamil += H_mag;
+			//printf("Diagonalizing..\n");
+			//eig_sym(eval,evec);
+			
+			eig_sym(eval,evec,hamil);
+			//eig_sym(eval,evec,hamil.slice(mythread));
+			//printf("Done..\n");
+
+			for (int i = 0; i < NU; i++) Eigval(kx,ky,i) = eval(i)-Efermi;
+			//eval.print();
+			for (int i = 0; i < NU; i++){
+				ifermi = i;
+				//energy += eval(i)*weight;
+				if(eval(i)>=Efermi) break;
+				//ifermi = i;
+				my_energy += eval(i)*weight;
+			}
+
+			psi = evec.submat(0,0,NU-1,ifermi);
+			//psi = evec.submat(0,0,ifermi-1,NU-1);
+			//cout<<size(psi)<<"\t"<<ifermi<<endl;
+
+			//my_rho += conj(psi.t())*psi*weight;
+			my_rho = (psi)*(psi.t())*weight;
+#pragma omp critical 
+		{
+			energy += my_energy;
+			//DENSITY_MATRIX += my_rho;
+			total_rho += my_rho;
+		}
+
+
+
+
+		}
+	}
+	//total_rho.print("new rho");
+	DENSITY_MATRIX = total_rho;
+
+	printf("Trace: %f\n",real(trace(DENSITY_MATRIX)));
+	
+	return energy;
+	//return 0;
 }
 
 
@@ -916,7 +1044,7 @@ int ComputeMagMoment(mat& moment){
 	for (int site = 0; site < 2; site++){
 		for (int x = 0; x < 3; x++){
 			//cout << size( DENSITY_MATRIX.submat(NC*site,NC*site,NC*(site + 1)-1, NC*(site + 1)-1) ) << endl;
-			tmp = DENSITY_MATRIX.submat(NC*site,NC*site,NC*(site + 1)-1, NC*(site + 1)-1) ;
+			tmp = DENSITY_MATRIX.submat(NC*site,NC*site,NC*(site + 1)-1, NC*(site + 1)-1).t() ;
 			tmp *= GU.slice(x);
 			//(tmp*GU.slice(x)).print();
 			//tmp.print();
@@ -1169,7 +1297,8 @@ void saveArpes(Cell *data, Quad *quadrature, int lines, double U, double J, doub
         Efermi = FindFermi(data, quadrature, lines, U, J);
 
 	double kx,ky, theta, frac = 0.8;
-	char paraband[1024], buffer[1024];
+	char paraband[1024];
+	//, buffer[1024];
 	sprintf(paraband,"arpes_H%.2f_%d%d%d_U%.2lf.txt",Hz,int(Haxis[0]),int(Haxis[1]),int(Haxis[2]), U);
 	ifstream fb("inputs/ARPES");
 	//ifstream fb("inputs/contourE1.txt");

@@ -9,6 +9,10 @@ from matplotlib import rc
 from matplotlib import cm
 
 def plot_band(x,ans):
+	font = {'family' : 'serif',
+		'size'   : 22   }
+	rc('font', **font)
+
 	ans = np.array(ans, dtype=float)
 	x = np.array(x);
 	fermi = np.zeros(len(x))
@@ -17,18 +21,23 @@ def plot_band(x,ans):
 	#print(ans)
 	n = len(ans[0])
 	#print(n)
-	for i in range( 8, n ):
-        	plt.plot(x,ans.transpose()[i],'r')
+	color_list = ['r','g']
+	for i in range( 10, n ):
+        	plt.plot(x,ans.transpose()[i],'r', color = color_list[i%2])
 
 	plt.plot(x,fermi,'b--' )
+	plt.xlim(min(x),max(x))
 	plt.xticks([0,100,200,300],xlabel, fontsize=20)
 	plt.ylabel('E-E'+r'$_{F}$', fontsize=20)
 	plt.title(r"$t_{\sigma}$=1.0"+ "\t"+r"$t_{\pi}$=0.2"+"\t" + "U="+U)
 	#plt.set_xticks((0,100,200,300))
 	#fig.show()
-	plt.show()
-
-	pass
+	plt.show(block = False)
+	try:
+		input("Hit Enter To Close")
+	except:
+		plt.close()
+	return 0
 
 def plot_gap(x,ans):
         ans = np.array(ans, dtype=float)
@@ -50,7 +59,12 @@ def plot_gap(x,ans):
         plt.title(r"$t_{\sigma}$=1.0"+ "\t"+r"$t_{\pi}$=0.2"+"\t" + "U="+U)
         #plt.set_xticks((0,100,200,300))
         #fig.show()
-        plt.show()
+        plt.show(block = False)
+	try:
+		input("Hit Enter To Close")
+	except:
+		plt.close()
+	return 0
 
         pass
 
