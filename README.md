@@ -11,7 +11,7 @@ Computes the Hartree Fock energy for CUO2 using model parameters.
 
 ### Git Directory at origin:
 
-`/home/niladri/HF_Ara/TEST/VERSION` --> Note: Do not change this
+`/Users/pcs/Documents/LSCO` --> Note: Do not change this
 
 ### Working Directory:
 
